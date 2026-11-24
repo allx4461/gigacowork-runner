@@ -1,0 +1,97 @@
+{
+  "_note": "Все обращения скрипта к UI стенда — здесь. Каждое поле — список кандидатов, берётся первый видимый. Формы кандидата: {role,name,exact} | {label} | {placeholder} | {text,exact} | {css} | строка-селектор Playwright; {name} в шаблонах подставляется скриптом. Сверено с демо-стендом 2026-10-07 (см. STAND-AUTOMATION.md §4): чат, вопрос агента, команды «/», документы и формы создания. Не проверены на живом прогоне: отправка форм deploy, статус «Добавлено», страница настроек агента, выбор агента в «Добавить агента». Локальные правки — ~/.skill-craft/selectors.local.json.",
+
+  "auth": {
+    "loginUrlPattern": "login|signin|sign-in|auth|sso|oauth|keycloak"
+  },
+
+  "workspace": {
+    "newPath": "/workspaces/new",
+    "urlPattern": "/workspaces/([0-9a-f]{8}-[0-9a-f-]{27})",
+    "name": [{ "label": "Название" }],
+    "description": [{ "label": "Описание" }],
+    "submit": [{ "role": "button", "name": "Создать", "exact": true }]
+  },
+
+  "agent": {
+    "tabQuery": "?tab=agents",
+    "urlPattern": "/agents/([0-9a-f]{8}-[0-9a-f-]{27})",
+    "tab": [{ "role": "link", "name": "Агенты", "exact": true }],
+    "create": [{ "role": "button", "name": "Создать агента" }],
+    "name": [{ "label": "Название" }],
+    "description": [{ "label": "Описание" }],
+    "instruction": [{ "label": "Инструкция" }],
+    "submit": [{ "role": "button", "name": "Сохранить", "exact": true }]
+  },
+
+  "skills": {
+    "tabQuery": "?tab=skills",
+    "tab": [{ "role": "link", "name": "Навыки", "exact": true }],
+    "create": [{ "role": "button", "name": "Создать навык" }],
+    "add": [{ "role": "button", "name": "Добавить", "exact": true }],
+    "addInCatalog": [{ "role": "button", "name": "Добавить навык" }],
+    "uploadOption": [{ "role": "button", "name": "Загрузить файл навыка" }, { "role": "menuitem", "name": "Загрузить файл навыка" }],
+    "fileInput": [{ "css": "input[aria-label='Выберите файл навыка']" }, { "css": "[role=dialog] input[type=file]" }],
+    "clearFile": [{ "role": "button", "name": "Удалить выбранный файл" }],
+    "next": [{ "role": "button", "name": "Далее", "exact": true }],
+    "addedText": "Добавлено"
+  },
+
+  "commands": {
+    "tabQuery": "?tab=commands",
+    "moreTabs": [{ "role": "button", "name": "Ещё вкладки" }],
+    "tab": [{ "role": "link", "name": "Команды", "exact": true }],
+    "manage": [{ "role": "button", "name": "Управление командами" }],
+    "create": [{ "role": "button", "name": "Создать команду" }],
+    "name": [{ "label": "Имя команды" }],
+    "description": [{ "label": "Описание" }],
+    "instruction": [{ "label": "Инструкции" }],
+    "submit": [{ "role": "button", "name": "Создать команду" }]
+  },
+
+  "binding": {
+    "addSkills": [{ "role": "button", "name": "Добавить в «Навыки»" }],
+    "addCommands": [{ "role": "button", "name": "Добавить в «Команды»" }],
+    "addButton": "Добавить",
+    "removeButton": "Убрать",
+    "closeDialog": [{ "role": "button", "name": "Закрыть", "exact": true }, { "role": "button", "name": "Готово" }],
+    "save": [{ "role": "button", "name": "Сохранить", "exact": true }],
+    "counterRegex": "(Навыки|Команды|Интеграции)\\s*\\n?\\s*(\\d+)",
+    "systemSkills": 11
+  },
+
+  "chat": {
+    "newTaskQuery": "?tab=new-task",
+    "newChat": [{ "role": "link", "name": "Новая задача", "exact": true }],
+    "agentPicker": [{ "role": "button", "name": "Добавить агента" }],
+    "agentItem": [{ "role": "button", "name": "{name}", "exact": true }, { "role": "menuitem", "name": "{name}", "exact": true }, { "role": "option", "name": "{name}", "exact": true }],
+    "input": [{ "placeholder": "Чем я могу помочь?" }, { "role": "textbox", "name": "Чем я могу помочь?", "exact": true }, { "css": "textarea" }],
+    "send": [{ "role": "button", "name": "Отправить", "exact": true }],
+    "stop": [{ "role": "button", "name": "Остановить", "exact": true }],
+    "attachInput": [{ "css": "input[type=file][multiple]:not([webkitdirectory])" }, { "css": "input[type=file]:not([webkitdirectory])" }],
+    "turn": "[data-turn-id]",
+    "attachmentChip": { "role": "button", "name": "Открепить {name}" },
+    "settleMs": 2000,
+    "uploadProgress": { "css": "[role=progressbar][aria-label^='Загрузка файла']" },
+    "transcript": [{ "css": "[data-chat-scroll-container]" }, { "css": "main" }],
+    "assistantMessage": [{ "css": "[data-turn-id] div[aria-hidden=false]" }],
+    "question": [{ "role": "button", "name": "Пропустить", "exact": true }],
+    "questionOption": { "role": "radio" },
+    "questionFreeText": [{ "placeholder": "Свой вариант" }],
+    "questionSubmit": [{ "role": "button", "name": "Отправить", "exact": true }],
+    "commandPrefix": "/",
+    "commandMenuItem": [{ "role": "button", "name": "/{name}", "exact": true }, { "role": "button", "name": "/{name}" }],
+    "questionMarkHeuristic": false,
+    "stableMs": 6000,
+    "answerTimeoutMs": 900000
+  },
+
+  "documents": {
+    "tab": [],
+    "emptyText": "Здесь появятся файлы сессии",
+    "item": [{ "css": "button[aria-label^='Открыть ']:not([aria-label^='Открыть превью'])" }],
+    "previewActions": [{ "role": "button", "name": "Действия", "exact": true }],
+    "download": [{ "role": "menuitem", "name": "Скачать" }],
+    "previewClose": [{ "role": "button", "name": "Закрыть", "exact": true }]
+  }
+}

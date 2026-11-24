@@ -1,0 +1,10 @@
+node_modules
+.DS_Store
+.last-result.txt
+.env
+
+# результаты и данные прогонов — не код
+runs/
+FESKO-001/
+MFG-002/
+RZD-001/

@@ -1,0 +1,14 @@
+{
+  "name": "cowork-stand-automation",
+  "private": true,
+  "type": "module",
+  "description": "Playwright-автоматизация демо-стенда GigaCowork: вход, развёртывание плагина, чаты, команды, прогон evals (STAND-AUTOMATION.md).",
+  "bin": { "cowork": "cowork.mjs" },
+  "scripts": {
+    "setup": "npm install && npx playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  },
+  "engines": { "node": ">=18" }
+}
