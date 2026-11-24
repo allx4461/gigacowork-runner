@@ -3,8 +3,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { freeRuns, normName, pickPrompt, pickSkill, runNumber } from '../lib/disk-case.mjs';
+import { freeRuns, inputKeys, isInputName, normName, pickPrompt, pickSkill, runNumber } from '../lib/disk-case.mjs';
 import { readEvals } from '../lib/plugin.mjs';
+
+test('страницы входных PDF «<имя>_p1.png» — не артефакты, а настоящий результат — артефакт', () => {
+  const skip = inputKeys(['/x/Входные данные/MGN-001-TD-22.pdf']);
+  assert.ok(isInputName('MGN-001-TD-22.pdf', skip));
+  assert.ok(isInputName('MGN-001-TD-22_p1.png', skip));
+  assert.ok(!isInputName('MGN-001 результат проверки.xlsx', skip));
+  assert.ok(!isInputName('MGN-001-TD-99_p1.png', skip));
+});
 
 test('промпт выбирается по треку, неоднозначность и отсутствие — ошибка', () => {
   const names = ['MGN-001_промпт_A.md', 'MGN-001_промпт_B.md', 'MGN-001_скилл_GigaCowork.md'];

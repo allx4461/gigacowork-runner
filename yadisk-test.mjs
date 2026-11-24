@@ -28,13 +28,14 @@ const COWORK = [
   path.join(HERE, 'cowork.mjs'),
   path.join(HERE, '..', 'plugins', 'skill-craft', 'skills', 'skill-craft', 'Референсы', 'Автоматизация стенда', 'cowork.mjs'),
 ].find((f) => f && fs.existsSync(f));
-const API = 'https://cloud-api.yandex.net/v1/disk';
+const API = process.env.YADISK_API || 'https://cloud-api.yandex.net/v1/disk';
 const ATTACH_NOTE = 'Все нужные файлы приложены к этому сообщению — используй их, ничего не скачивай с Яндекс Диска.';
 
 const DEFAULT_STAND = 'https://demo.cowork.ru';
 const AUTH_FILE = path.join(os.homedir(), '.skill-craft', 'storage-state.json');
 
 const log = (...a) => console.error('·', ...a);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Ввод: в терминале — интерактивно; если stdin — канал, строки читаются по порядку.
 let lines;
@@ -68,10 +69,21 @@ function token() {
 
 const diskPath = (p) => 'disk:/' + p.replace(/^disk:\/?/, '').replace(/^\/+/, '');
 
+// Диск периодически отвечает 423 (ресурс занят), 429 и 5xx — такие ответы повторяем с паузой.
+const RETRY = new Set([423, 429, 500, 502, 503, 504]);
+async function withRetry(what, fn) {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fn();
+    if (!RETRY.has(res.status) || attempt === 6) return res;
+    log(`Диск ${res.status} на «${what}», повтор ${attempt}/5…`);
+    await sleep(attempt * 3000);
+  }
+}
+
 async function api(method, url, params = {}, { okStatuses = [] } = {}) {
   const u = new URL(API + url);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
-  const res = await fetch(u, { method, headers: { Authorization: 'OAuth ' + token() } });
+  const res = await withRetry(`${method} ${url}`, () => fetch(u, { method, headers: { Authorization: 'OAuth ' + token() } }));
   if (!res.ok && !okStatuses.includes(res.status)) throw new Error(`Диск ${method} ${url}: ${res.status} ${await res.text()}`);
   return res.status === 204 || res.status === 409 ? null : res.json();
 }
@@ -107,22 +119,30 @@ async function busyRuns(caseFolder, track) {
 
 async function download(item, dest) {
   const { href } = await api('GET', '/resources/download', { path: item.path });
-  const res = await fetch(href);
+  const res = await withRetry(`скачивание ${item.name}`, () => fetch(href));
   if (!res.ok) throw new Error(`Скачивание ${item.name}: ${res.status}`);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
 }
 
+// Диск отвечает 423 на PUT уже существующей папки (вместо 409), поэтому сначала проверяем, что она есть.
+async function dirExists(p) {
+  return (await api('GET', '/resources', { path: p, limit: 0 }, { okStatuses: [404] }))?.type === 'dir';
+}
+
 async function mkdirs(folder) {
   const parts = folder.replace(/^disk:\/?/, '').split('/').filter(Boolean);
   for (let i = 1; i <= parts.length; i++) {
-    await api('PUT', '/resources', { path: diskPath(parts.slice(0, i).join('/')) }, { okStatuses: [409] });
+    const p = diskPath(parts.slice(0, i).join('/'));
+    if (await dirExists(p)) continue;
+    await api('PUT', '/resources', { path: p }, { okStatuses: [409] });
   }
 }
 
 async function uploadFile(local, remote) {
   const { href } = await api('GET', '/resources/upload', { path: diskPath(remote), overwrite: 'true' });
-  const res = await fetch(href, { method: 'PUT', body: fs.readFileSync(local) });
+  const body = fs.readFileSync(local);
+  const res = await withRetry(`загрузка ${remote}`, () => fetch(href, { method: 'PUT', body }));
   if (!res.ok) throw new Error(`Загрузка ${remote}: ${res.status}`);
 }
 
@@ -221,7 +241,7 @@ function runCowork(args) {
 
 // Раскладывает результаты на Диск: артефакты завершённых прогонов — в стандартные папки кейса,
 // ленты и время замера — в папку запуска раннера. Незавершённые прогоны в «Результаты тестирования» не попадают.
-async function publish({ resultsDir, caseFolder, track, reportFolder, meta }) {
+export async function publish({ resultsDir, caseFolder, track, reportFolder, meta }) {
   const runLog = JSON.parse(fs.readFileSync(path.join(resultsDir, 'run-log.json'), 'utf8'));
   const done = runLog.filter((e) => e.status === 'done');
   const numbers = freeRuns(await busyRuns(caseFolder, track), done.length);
@@ -253,12 +273,31 @@ async function publish({ resultsDir, caseFolder, track, reportFolder, meta }) {
     note: 'answerSec — сумма времён ответов от отправки до подтверждённой остановки (включает ожидание стабильности ленты и задержку опроса); подготовка чата и ответы на уточнения не входят. diskRun — номер папки «<N> прогон» на Диске; null — артефакты в «Результаты тестирования» не выложены.',
     runs: timings,
   }, null, 2));
+  await mkdirs(reportFolder);
   await uploadFile(timeFile, `${reportFolder}/время.json`);
   return timings;
 }
 
+// Повторная выкладка уже готового локального прогона (например, после сбоя Диска): стенд не запускается.
+// Файлы с тем же именем перезаписываются, поэтому ленты и время.json лягут в ту же папку запуска.
+async function republish(opt) {
+  const resultsDir = path.resolve(String(opt.publishFrom));
+  if (!fs.existsSync(path.join(resultsDir, 'run-log.json'))) throw new Error(`В «${resultsDir}» нет run-log.json`);
+  if (!['A', 'B'].includes(String(opt.track).toUpperCase())) throw new Error('Укажите --track A или --track B');
+  if (typeof opt.diskFolder !== 'string') throw new Error('Укажите --disk-folder, например "Бенчмарк/MGN-001"');
+  const diskFolder = opt.diskFolder.replace(/^\/+|\/+$/g, '');
+  const track = String(opt.track).toUpperCase();
+  const stamp = path.basename(resultsDir);
+  const reportFolder = `${opt.reportFolder || `${diskFolder}/${LAYOUT.runnerReports}`}/${stamp}`;
+  const timings = await publish({ resultsDir, caseFolder: diskFolder, track, reportFolder,
+    meta: { case: path.basename(diskFolder), track, platform: LAYOUT.platform, agent: opt.agent || null, skill: opt.skill || null, republished: true, runnerStamp: stamp } });
+  for (const t of timings) log(`прогон ${t.run}: ${t.status}${t.diskRun ? ` → «${t.diskRun} прогон»` : ''}`);
+  console.log('RESULT ' + JSON.stringify({ report: `${reportFolder}/время.json`, local: resultsDir, runs: timings.map(({ run, diskRun, status }) => ({ run, diskRun, status })) }));
+}
+
 async function main() {
   const opt = parseArgs(process.argv.slice(2));
+  if (opt.publishFrom) return republish(opt);
   if (!COWORK) throw new Error('Не найден cowork.mjs: положите его рядом со скриптом или задайте COWORK_MJS');
   if (!opt.track) opt.track = await input('Трек A (без ролевого скилла) или B (со скиллом): ');
   if (typeof opt.track !== 'string' || !['A', 'B'].includes(opt.track.toUpperCase())) throw new Error('Укажите --track A или --track B');
@@ -339,4 +378,6 @@ async function main() {
   console.log('RESULT ' + JSON.stringify({ report: `${reportFolder}/время.json`, web, local: resultsDir, runs: timings.map(({ run, diskRun, status }) => ({ run, diskRun, status })) }));
 }
 
-main().catch((e) => { console.error('✗', e.message); console.log('RESULT ' + JSON.stringify({ error: e.message })); process.exit(1); });
+if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+  main().catch((e) => { console.error('✗', e.message); console.log('RESULT ' + JSON.stringify({ error: e.message })); process.exit(1); });
+}
