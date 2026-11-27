@@ -9,7 +9,7 @@
 // Токен Диска: переменная YADISK_TOKEN или файл ~/.skill-craft/yadisk-token (права 600).
 //
 // node yadisk-test.mjs [--disk-folder "Бенчмарк/MGN-001"] [--workspace <URL или название>] [--track A|B]
-//   [--stand https://demo.cowork.ru] [--runs 3] [--timeout-min 45] [--report-folder "<папка отчётов>"] [--agent "Имя"] [--dry-run]
+//   [--stand https://demo.cowork.ru] [--runs 3] [--timeout-min 45] [--report-folder "<папка отчётов>"] [--agent "Имя" | --no-agent] [--dry-run]
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -318,15 +318,19 @@ async function main() {
 
   if (opt.track === 'B') {
     const skillName = pickSkill(promptItems.map((p) => p.name));
-    if (!opt.agent) opt.agent = await input('Имя агента со скиллом в CoWork: ');
+    // Скилл бывает без агента (привязан к пространству): --no-agent или пустое имя агента.
+    if (opt.noAgent === true && opt.agent) throw new Error('--agent и --no-agent несовместимы');
+    if (opt.noAgent !== true && !opt.agent) opt.agent = await input('Имя агента со скиллом в CoWork (пусто — без агента, скилл привязан к пространству): ');
     if (!opt.skill && skillName) { opt.skill = skillName.replace(/\.md$/i, ''); log(`Скилл (метка): ${skillName}`); }
     if (!opt.skill) opt.skill = await input('Название и версия скилла (проверьте привязку в CoWork): ');
-    if (typeof opt.agent !== 'string' || !opt.agent.trim() || typeof opt.skill !== 'string' || !opt.skill.trim()) {
-      throw new Error('Для трека B нужны --agent и --skill; проверьте привязку скилла в CoWork');
+    if (opt.agent !== undefined && typeof opt.agent !== 'string' || typeof opt.skill !== 'string' || !opt.skill.trim()) {
+      throw new Error('Для трека B нужен --skill; агент — это --agent "Имя" или --no-agent');
     }
-    opt.agent = opt.agent.trim();
+    opt.agent = (opt.agent || '').trim() || null;
     opt.skill = opt.skill.trim();
-    log('Проверьте в CoWork, что скилл привязан к агенту: раннер не проверяет это автоматически.');
+    log(opt.agent
+      ? 'Проверьте в CoWork, что скилл привязан к агенту: раннер не проверяет это автоматически.'
+      : 'Прогон БЕЗ агента: проверьте в CoWork, что скилл доступен в пространстве — раннер это не проверяет.');
   }
   if (!opt.dryRun) {
     if (typeof opt.workspace === 'string' && !/^https?:/.test(opt.workspace)) opt.workspace = await workspaceUrl(stand, opt.workspace);
@@ -359,7 +363,7 @@ async function main() {
     '--run-id', stamp, '--track', opt.track, '--timeout-min', String(opt.timeoutMin || 45), '--headless'];
   args.push('--stand', stand);
   if (opt.track === 'A') args.push('--no-agent');
-  else args.push('--agent', opt.agent, '--skill', opt.skill);
+  else args.push(...(opt.agent ? ['--agent', opt.agent] : ['--no-agent']), '--skill', opt.skill);
   log(`Стенд: ${runs} прогона(ов)…`);
   let resultsDir;
   try {
